@@ -5,6 +5,28 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/auth.php';
 
+$origen = $_SERVER['HTTP_ORIGIN'] ?? '';
+$origenesPermitidos = [
+    'http://localhost',
+    'http://127.0.0.1',
+    'http://localhost:5500',
+    'http://127.0.0.1:5500',
+    'null'
+];
+
+if (in_array($origen, $origenesPermitidos, true)) {
+    header("Access-Control-Allow-Origin: {$origen}");
+    header('Access-Control-Allow-Credentials: true');
+    header('Vary: Origin');
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    header('Access-Control-Allow-Methods: POST, GET, PUT, DELETE, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type');
+    http_response_code(204);
+    exit;
+}
+
 class MovimientosController
 {
     public function __construct(private PDO $pdo)
@@ -73,6 +95,18 @@ class MovimientosController
         $consulta->execute();
 
         return $consulta->fetchAll();
+    }
+
+    public function buscarPersonaPorUsuarioId(int $usuarioId): ?int
+    {
+        $consulta = $this->pdo->prepare(
+            'SELECT id FROM personas WHERE usuario_id = :usuario_id'
+        );
+        $consulta->bindValue(':usuario_id', $usuarioId, PDO::PARAM_INT);
+        $consulta->execute();
+
+        $personaId = $consulta->fetchColumn();
+        return $personaId === false ? null : (int) $personaId;
     }
 
     public function buscarPorId(int $movimientoId): ?array
@@ -199,7 +233,11 @@ if (in_array($_SERVER['REQUEST_METHOD'], ['POST', 'GET', 'PUT', 'DELETE'], true)
         $movimientoId = (int) ($_GET['id'] ?? 0);
 
         if ($metodo === 'POST') {
-            $autenticacion->exigirSesion();
+            $usuarioSesion = $autenticacion->exigirSesion();
+            $personaId = $controlador->buscarPersonaPorUsuarioId((int) ($usuarioSesion['id'] ?? 0));
+            if ($personaId === null) {
+                throw new InvalidArgumentException('El usuario no tiene una persona asociada.');
+            }
             if (!isset($_FILES['fotografia']) || $_FILES['fotografia']['error'] !== UPLOAD_ERR_OK) {
                 throw new InvalidArgumentException('Debes enviar una fotografía válida.');
             }
@@ -208,8 +246,8 @@ if (in_array($_SERVER['REQUEST_METHOD'], ['POST', 'GET', 'PUT', 'DELETE'], true)
                 throw new InvalidArgumentException('No se pudo leer la fotografía.');
             }
             $movimientoId = $controlador->registrarMovimiento(
-                (int) ($_POST['persona_id'] ?? 0),
-                (int) ($_POST['usuario_id'] ?? 0),
+                $personaId,
+                (int) $usuarioSesion['id'],
                 strtoupper(trim((string) ($_POST['movimiento'] ?? ''))),
                 trim((string) ($_POST['obra'] ?? '')),
                 trim((string) ($_POST['latitud'] ?? '')),
