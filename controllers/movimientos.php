@@ -15,6 +15,7 @@ class MovimientosController
         int $personaId,
         int $usuarioId,
         string $movimiento,
+        string $obra,
         string $latitud,
         string $longitud,
         string $fotografia
@@ -25,6 +26,10 @@ class MovimientosController
 
         if (!in_array($movimiento, ['ENTRADA', 'SALIDA'], true)) {
             throw new InvalidArgumentException('El movimiento debe ser ENTRADA o SALIDA.');
+        }
+
+        if ($obra === '' || strlen($obra) > 150) {
+            throw new InvalidArgumentException('La obra debe tener entre 1 y 150 caracteres.');
         }
 
         if (!is_numeric($latitud) || (float) $latitud < -90 || (float) $latitud > 90) {
@@ -41,14 +46,15 @@ class MovimientosController
 
         $consulta = $this->pdo->prepare(
             'INSERT INTO movimientos
-                (persona_id, usuario_id, movimiento, latitud, longitud, fotografia)
+                     (persona_id, usuario_id, movimiento, obra, latitud, longitud, fotografia)
              VALUES
-                (:persona_id, :usuario_id, :movimiento, :latitud, :longitud, :fotografia)'
+                     (:persona_id, :usuario_id, :movimiento, :obra, :latitud, :longitud, :fotografia)'
         );
 
         $consulta->bindValue(':persona_id', $personaId, PDO::PARAM_INT);
         $consulta->bindValue(':usuario_id', $usuarioId, PDO::PARAM_INT);
         $consulta->bindValue(':movimiento', $movimiento, PDO::PARAM_STR);
+        $consulta->bindValue(':obra', $obra, PDO::PARAM_STR);
         $consulta->bindValue(':latitud', $latitud, PDO::PARAM_STR);
         $consulta->bindValue(':longitud', $longitud, PDO::PARAM_STR);
         $consulta->bindValue(':fotografia', $fotografia, PDO::PARAM_LOB);
@@ -60,7 +66,7 @@ class MovimientosController
     public function listarMovimientos(): array
     {
         $consulta = $this->pdo->prepare(
-            'SELECT id, persona_id, usuario_id, movimiento, latitud, longitud,
+            'SELECT id, persona_id, usuario_id, movimiento, obra, latitud, longitud,
                     TO_BASE64(fotografia) AS fotografia, fecha_hora
              FROM movimientos'
         );
@@ -76,7 +82,7 @@ class MovimientosController
         }
 
         $consulta = $this->pdo->prepare(
-            'SELECT id, persona_id, usuario_id, movimiento, latitud, longitud,
+            'SELECT id, persona_id, usuario_id, movimiento, obra, latitud, longitud,
                     TO_BASE64(fotografia) AS fotografia, fecha_hora
              FROM movimientos
              WHERE id = :id'
@@ -122,6 +128,15 @@ class MovimientosController
             }
             $campos[] = 'movimiento = :movimiento';
             $valores[':movimiento'] = $movimiento;
+        }
+
+        if (array_key_exists('obra', $datos)) {
+            $obra = trim((string) $datos['obra']);
+            if ($obra === '' || strlen($obra) > 150) {
+                throw new InvalidArgumentException('La obra debe tener entre 1 y 150 caracteres.');
+            }
+            $campos[] = 'obra = :obra';
+            $valores[':obra'] = $obra;
         }
 
         foreach (['latitud' => [-90, 90], 'longitud' => [-180, 180]] as $campo => $limites) {
@@ -196,6 +211,7 @@ if (in_array($_SERVER['REQUEST_METHOD'], ['POST', 'GET', 'PUT', 'DELETE'], true)
                 (int) ($_POST['persona_id'] ?? 0),
                 (int) ($_POST['usuario_id'] ?? 0),
                 strtoupper(trim((string) ($_POST['movimiento'] ?? ''))),
+                trim((string) ($_POST['obra'] ?? '')),
                 trim((string) ($_POST['latitud'] ?? '')),
                 trim((string) ($_POST['longitud'] ?? '')),
                 $fotografia

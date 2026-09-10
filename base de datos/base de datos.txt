@@ -34,6 +34,7 @@ CREATE TABLE movimientos (
     persona_id BIGINT UNSIGNED NOT NULL,
     usuario_id BIGINT UNSIGNED NOT NULL,
     movimiento ENUM('ENTRADA', 'SALIDA') NOT NULL,
+    obra VARCHAR(150) NOT NULL,
     latitud DECIMAL(10, 8) NOT NULL,
     longitud DECIMAL(11, 8) NOT NULL,
     fotografia MEDIUMBLOB NOT NULL,
