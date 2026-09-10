@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/auth.php';
 
 class UsuariosController
 {
@@ -158,6 +159,8 @@ if (in_array($_SERVER['REQUEST_METHOD'], ['POST', 'GET', 'PUT', 'DELETE'], true)
     header('Content-Type: application/json; charset=utf-8');
 
     try {
+        $autenticacion = new Autenticacion($pdo);
+        $autenticacion->exigirAdministrador();
         $controlador = new UsuariosController($pdo);
         $metodo = $_SERVER['REQUEST_METHOD'];
         $usuarioId = (int) ($_GET['id'] ?? 0);
@@ -223,6 +226,14 @@ if (in_array($_SERVER['REQUEST_METHOD'], ['POST', 'GET', 'PUT', 'DELETE'], true)
         echo json_encode([
             'exito' => false,
             'mensaje' => 'No se pudo procesar el usuario. Verifica que el usuario no esté duplicado ni relacionado con personas.'
+        ], JSON_UNESCAPED_UNICODE);
+    } catch (RuntimeException $e) {
+        if (http_response_code() < 400) {
+            http_response_code(401);
+        }
+        echo json_encode([
+            'exito' => false,
+            'mensaje' => $e->getMessage()
         ], JSON_UNESCAPED_UNICODE);
     }
 }

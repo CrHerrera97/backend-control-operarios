@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/auth.php';
 
 class MovimientosController
 {
@@ -177,11 +178,13 @@ if (in_array($_SERVER['REQUEST_METHOD'], ['POST', 'GET', 'PUT', 'DELETE'], true)
     header('Content-Type: application/json; charset=utf-8');
 
     try {
+        $autenticacion = new Autenticacion($pdo);
         $controlador = new MovimientosController($pdo);
         $metodo = $_SERVER['REQUEST_METHOD'];
         $movimientoId = (int) ($_GET['id'] ?? 0);
 
         if ($metodo === 'POST') {
+            $autenticacion->exigirSesion();
             if (!isset($_FILES['fotografia']) || $_FILES['fotografia']['error'] !== UPLOAD_ERR_OK) {
                 throw new InvalidArgumentException('Debes enviar una fotografía válida.');
             }
@@ -200,6 +203,7 @@ if (in_array($_SERVER['REQUEST_METHOD'], ['POST', 'GET', 'PUT', 'DELETE'], true)
             http_response_code(201);
             $respuesta = ['exito' => true, 'mensaje' => 'Movimiento registrado correctamente.', 'movimiento_id' => $movimientoId];
         } elseif ($metodo === 'GET') {
+            $autenticacion->exigirAdministrador();
             if ($movimientoId <= 0) {
                 $respuesta = [
                     'exito' => true,
@@ -216,6 +220,7 @@ if (in_array($_SERVER['REQUEST_METHOD'], ['POST', 'GET', 'PUT', 'DELETE'], true)
             }
             $respuesta = ['exito' => true, 'movimiento' => $resultado];
         } elseif ($metodo === 'PUT') {
+            $autenticacion->exigirAdministrador();
             $datos = json_decode(file_get_contents('php://input'), true);
             if (!is_array($datos)) {
                 throw new InvalidArgumentException('El cuerpo debe ser un JSON válido.');
@@ -226,6 +231,7 @@ if (in_array($_SERVER['REQUEST_METHOD'], ['POST', 'GET', 'PUT', 'DELETE'], true)
             }
             $respuesta = ['exito' => true, 'mensaje' => 'Movimiento actualizado correctamente.'];
         } else {
+            $autenticacion->exigirAdministrador();
             if (!$controlador->eliminarMovimiento($movimientoId)) {
                 http_response_code(404);
                 throw new InvalidArgumentException('Movimiento no encontrado.');
@@ -247,6 +253,14 @@ if (in_array($_SERVER['REQUEST_METHOD'], ['POST', 'GET', 'PUT', 'DELETE'], true)
         echo json_encode([
             'exito' => false,
             'mensaje' => 'No se pudo registrar el movimiento.'
+        ], JSON_UNESCAPED_UNICODE);
+    } catch (RuntimeException $e) {
+        if (http_response_code() < 400) {
+            http_response_code(401);
+        }
+        echo json_encode([
+            'exito' => false,
+            'mensaje' => $e->getMessage()
         ], JSON_UNESCAPED_UNICODE);
     }
 }
