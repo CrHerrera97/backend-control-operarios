@@ -132,9 +132,13 @@ class MovimientosController
     public function listarMovimientos(): array
     {
         $consulta = $this->pdo->prepare(
-            'SELECT id, persona_id, usuario_id, movimiento, obra, latitud, longitud,
-                    TO_BASE64(fotografia) AS fotografia, fecha_hora
-             FROM movimientos'
+            'SELECT m.id, m.persona_id, m.usuario_id,
+                    p.nombre_completo AS persona,
+                    m.movimiento AS tipo, m.obra, m.latitud, m.longitud,
+                    TO_BASE64(m.fotografia) AS fotografia, m.fecha_hora
+             FROM movimientos m
+             INNER JOIN personas p ON p.id = m.persona_id
+             ORDER BY m.fecha_hora DESC, m.id DESC'
         );
         $consulta->execute();
 
