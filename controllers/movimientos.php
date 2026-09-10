@@ -66,23 +66,67 @@ class MovimientosController
             throw new InvalidArgumentException('La fotografía es obligatoria.');
         }
 
-        $consulta = $this->pdo->prepare(
-            'INSERT INTO movimientos
-                     (persona_id, usuario_id, movimiento, obra, latitud, longitud, fotografia)
-             VALUES
-                     (:persona_id, :usuario_id, :movimiento, :obra, :latitud, :longitud, :fotografia)'
-        );
+        $this->pdo->beginTransaction();
 
-        $consulta->bindValue(':persona_id', $personaId, PDO::PARAM_INT);
-        $consulta->bindValue(':usuario_id', $usuarioId, PDO::PARAM_INT);
-        $consulta->bindValue(':movimiento', $movimiento, PDO::PARAM_STR);
-        $consulta->bindValue(':obra', $obra, PDO::PARAM_STR);
-        $consulta->bindValue(':latitud', $latitud, PDO::PARAM_STR);
-        $consulta->bindValue(':longitud', $longitud, PDO::PARAM_STR);
-        $consulta->bindValue(':fotografia', $fotografia, PDO::PARAM_LOB);
-        $consulta->execute();
+        try {
+            $consultaUltimo = $this->pdo->prepare(
+                'SELECT movimiento, obra
+                 FROM movimientos
+                 WHERE persona_id = :persona_id
+                 ORDER BY fecha_hora DESC, id DESC
+                 LIMIT 1
+                 FOR UPDATE'
+            );
+            $consultaUltimo->bindValue(':persona_id', $personaId, PDO::PARAM_INT);
+            $consultaUltimo->execute();
+            $ultimoMovimiento = $consultaUltimo->fetch();
 
-        return (int) $this->pdo->lastInsertId();
+            if ($ultimoMovimiento !== false) {
+                if ($movimiento === 'ENTRADA' && $ultimoMovimiento['movimiento'] === 'ENTRADA') {
+                    throw new InvalidArgumentException(
+                        'Ya existe una entrada abierta en la obra "' . $ultimoMovimiento['obra'] . '". Debes registrar primero la salida.'
+                    );
+                }
+
+                if ($movimiento === 'SALIDA' && $ultimoMovimiento['movimiento'] !== 'ENTRADA') {
+                    throw new InvalidArgumentException('No hay una entrada abierta para registrar la salida.');
+                }
+
+                if ($movimiento === 'SALIDA' && $ultimoMovimiento['obra'] !== $obra) {
+                    throw new InvalidArgumentException(
+                        'La salida debe registrarse para la obra de la entrada abierta: "' . $ultimoMovimiento['obra'] . '".'
+                    );
+                }
+            } elseif ($movimiento === 'SALIDA') {
+                throw new InvalidArgumentException('No hay una entrada previa para registrar la salida.');
+            }
+
+            $consulta = $this->pdo->prepare(
+                'INSERT INTO movimientos
+                         (persona_id, usuario_id, movimiento, obra, latitud, longitud, fotografia)
+                 VALUES
+                         (:persona_id, :usuario_id, :movimiento, :obra, :latitud, :longitud, :fotografia)'
+            );
+
+            $consulta->bindValue(':persona_id', $personaId, PDO::PARAM_INT);
+            $consulta->bindValue(':usuario_id', $usuarioId, PDO::PARAM_INT);
+            $consulta->bindValue(':movimiento', $movimiento, PDO::PARAM_STR);
+            $consulta->bindValue(':obra', $obra, PDO::PARAM_STR);
+            $consulta->bindValue(':latitud', $latitud, PDO::PARAM_STR);
+            $consulta->bindValue(':longitud', $longitud, PDO::PARAM_STR);
+            $consulta->bindValue(':fotografia', $fotografia, PDO::PARAM_LOB);
+            $consulta->execute();
+
+            $movimientoId = (int) $this->pdo->lastInsertId();
+            $this->pdo->commit();
+
+            return $movimientoId;
+        } catch (Throwable $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            throw $e;
+        }
     }
 
     public function listarMovimientos(): array
