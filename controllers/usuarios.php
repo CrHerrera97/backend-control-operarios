@@ -225,7 +225,7 @@ if (in_array($_SERVER['REQUEST_METHOD'], ['POST', 'GET', 'PUT', 'DELETE'], true)
         http_response_code(500);
         echo json_encode([
             'exito' => false,
-            'mensaje' => 'No se pudo procesar el usuario. Verifica que el usuario no esté duplicado ni relacionado con personas.'
+            'mensaje' => 'No se pudo procesar el usuario. Verifica que el usuario no esté duplicado.'
         ], JSON_UNESCAPED_UNICODE);
     } catch (RuntimeException $e) {
         if (http_response_code() < 400) {

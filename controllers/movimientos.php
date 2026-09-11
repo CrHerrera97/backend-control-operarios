@@ -34,7 +34,6 @@ class MovimientosController
     }
 
     public function registrarMovimiento(
-        int $personaId,
         int $usuarioId,
         string $movimiento,
         string $obra,
@@ -42,8 +41,8 @@ class MovimientosController
         string $longitud,
         string $fotografia
     ): int {
-        if ($personaId <= 0 || $usuarioId <= 0) {
-            throw new InvalidArgumentException('Los IDs de persona y usuario deben ser válidos.');
+        if ($usuarioId <= 0) {
+            throw new InvalidArgumentException('El ID de usuario no es válido.');
         }
 
         if (!in_array($movimiento, ['ENTRADA', 'SALIDA'], true)) {
@@ -72,12 +71,12 @@ class MovimientosController
             $consultaUltimo = $this->pdo->prepare(
                 'SELECT movimiento, obra
                  FROM movimientos
-                 WHERE persona_id = :persona_id
+                 WHERE usuario_id = :usuario_id
                  ORDER BY fecha_hora DESC, id DESC
                  LIMIT 1
                  FOR UPDATE'
             );
-            $consultaUltimo->bindValue(':persona_id', $personaId, PDO::PARAM_INT);
+            $consultaUltimo->bindValue(':usuario_id', $usuarioId, PDO::PARAM_INT);
             $consultaUltimo->execute();
             $ultimoMovimiento = $consultaUltimo->fetch();
 
@@ -103,12 +102,11 @@ class MovimientosController
 
             $consulta = $this->pdo->prepare(
                 'INSERT INTO movimientos
-                         (persona_id, usuario_id, movimiento, obra, latitud, longitud, fotografia)
+                         (usuario_id, movimiento, obra, latitud, longitud, fotografia)
                  VALUES
-                         (:persona_id, :usuario_id, :movimiento, :obra, :latitud, :longitud, :fotografia)'
+                         (:usuario_id, :movimiento, :obra, :latitud, :longitud, :fotografia)'
             );
 
-            $consulta->bindValue(':persona_id', $personaId, PDO::PARAM_INT);
             $consulta->bindValue(':usuario_id', $usuarioId, PDO::PARAM_INT);
             $consulta->bindValue(':movimiento', $movimiento, PDO::PARAM_STR);
             $consulta->bindValue(':obra', $obra, PDO::PARAM_STR);
@@ -132,29 +130,17 @@ class MovimientosController
     public function listarMovimientos(): array
     {
         $consulta = $this->pdo->prepare(
-            'SELECT m.id, m.persona_id, m.usuario_id,
-                    p.nombre_completo AS persona,
+                'SELECT m.id, m.usuario_id,
+                    u.nombre_completo AS persona,
                     m.movimiento AS tipo, m.obra, m.latitud, m.longitud,
                     TO_BASE64(m.fotografia) AS fotografia, m.fecha_hora
              FROM movimientos m
-             INNER JOIN personas p ON p.id = m.persona_id
+                 INNER JOIN usuarios u ON u.id = m.usuario_id
              ORDER BY m.fecha_hora DESC, m.id DESC'
         );
         $consulta->execute();
 
         return $consulta->fetchAll();
-    }
-
-    public function buscarPersonaPorUsuarioId(int $usuarioId): ?int
-    {
-        $consulta = $this->pdo->prepare(
-            'SELECT id FROM personas WHERE usuario_id = :usuario_id'
-        );
-        $consulta->bindValue(':usuario_id', $usuarioId, PDO::PARAM_INT);
-        $consulta->execute();
-
-        $personaId = $consulta->fetchColumn();
-        return $personaId === false ? null : (int) $personaId;
     }
 
     public function buscarPorId(int $movimientoId): ?array
@@ -164,7 +150,7 @@ class MovimientosController
         }
 
         $consulta = $this->pdo->prepare(
-            'SELECT id, persona_id, usuario_id, movimiento, obra, latitud, longitud,
+            'SELECT id, usuario_id, movimiento, obra, latitud, longitud,
                     TO_BASE64(fotografia) AS fotografia, fecha_hora
              FROM movimientos
              WHERE id = :id'
@@ -185,13 +171,13 @@ class MovimientosController
         $campos = [];
         $valores = [':id' => $movimientoId];
 
-        if (array_key_exists('persona_id', $datos)) {
-            $personaId = (int) $datos['persona_id'];
-            if ($personaId <= 0) {
-                throw new InvalidArgumentException('El ID de persona no es válido.');
+        if (array_key_exists('usuario_id', $datos)) {
+            $usuarioId = (int) $datos['usuario_id'];
+            if ($usuarioId <= 0) {
+                throw new InvalidArgumentException('El ID de usuario no es válido.');
             }
-            $campos[] = 'persona_id = :persona_id';
-            $valores[':persona_id'] = $personaId;
+            $campos[] = 'usuario_id = :usuario_id';
+            $valores[':usuario_id'] = $usuarioId;
         }
 
         if (array_key_exists('usuario_id', $datos)) {
@@ -282,10 +268,6 @@ if (in_array($_SERVER['REQUEST_METHOD'], ['POST', 'GET', 'PUT', 'DELETE'], true)
 
         if ($metodo === 'POST') {
             $usuarioSesion = $autenticacion->exigirSesion();
-            $personaId = $controlador->buscarPersonaPorUsuarioId((int) ($usuarioSesion['id'] ?? 0));
-            if ($personaId === null) {
-                throw new InvalidArgumentException('El usuario no tiene una persona asociada.');
-            }
             if (!isset($_FILES['fotografia']) || $_FILES['fotografia']['error'] !== UPLOAD_ERR_OK) {
                 throw new InvalidArgumentException('Debes enviar una fotografía válida.');
             }
@@ -294,7 +276,6 @@ if (in_array($_SERVER['REQUEST_METHOD'], ['POST', 'GET', 'PUT', 'DELETE'], true)
                 throw new InvalidArgumentException('No se pudo leer la fotografía.');
             }
             $movimientoId = $controlador->registrarMovimiento(
-                $personaId,
                 (int) $usuarioSesion['id'],
                 strtoupper(trim((string) ($_POST['movimiento'] ?? ''))),
                 trim((string) ($_POST['obra'] ?? '')),
